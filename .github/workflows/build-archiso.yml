@@ -1,37 +1,101 @@
-
-name: Build Starfleet ArchISO
+name: Build Starfleet OS ISOs
 
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "README.md"
   workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
 
 jobs:
-  build-iso:
+  build:
+    name: Build (${{ matrix.role }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [ server, control, drone ]
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y arch-install-scripts squashfs-tools xorriso dosfstools mtools git make
-      - name: Build ISO (containerized using archlinux)
-        run: |
-          docker run --rm -v "$PWD":/work -w /work archlinux:latest bash -lc '
-            pacman -Sy --noconfirm archiso
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build inside Arch container
+        uses: addnab/docker-run-action@v3
+        with:
+          image: archlinux:latest
+          options: >-
+            -v ${{ github.workspace }}:/work
+            -w /work
+          run: |
+            set -euxo pipefail
+            pacman -Sy --noconfirm archlinux-keyring
+            pacman -S --noconfirm base-devel archiso squashfs-tools dosfstools git coreutils util-linux
+            rm -rf /etc/pacman.d/gnupg
+            pacman-key --init
+            pacman-key --populate archlinux
+
             mkdir -p out
-            mkarchiso -v -w /tmp/work -o out archiso
-          '
-      - name: Upload artifact
+            chmod +x \
+              roles/*/install.sh \
+              scripts/*.sh \
+              system/firstboot/starfleet-firstboot.sh \
+              archiso/airootfs/root/.automated_script.sh || true
+
+            export STARFLEET_ROLE="${{ matrix.role }}"
+            echo "Building for role=$STARFLEET_ROLE"
+            mkarchiso -v -o out ./archiso
+
+            ls -lah out
+
+      - name: Create checksums
+        run: |
+          shopt -s globstar
+          for f in out/**/*.iso out/*.iso; do
+            [ -f "$f" ] || continue
+            sha256sum "$f" > "$f.sha256"
+          done
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Starfleet-OS-ISO
-          path: out/*.iso
+          name: "starfleet-os-${{ matrix.role }}-${{ github.run_number }}"
+          path: |
+            out/*.iso
+            out/*.iso.sha256
+            out/**/*.iso
+            out/**/*.iso.sha256
+          if-no-files-found: error
+
+  release:
+    name: Release ISOs on tag
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Starfleet-OS-ISO v${{ github.run_number }}
-          files: out/*.iso
+          files: |
+            dist/**/*.iso
+            dist/**/*.iso.sha256
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
