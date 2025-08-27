@@ -1,0 +1,37 @@
+
+name: Build Starfleet ArchISO
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y arch-install-scripts squashfs-tools xorriso dosfstools mtools git make
+      - name: Build ISO (containerized using archlinux)
+        run: |
+          docker run --rm -v "$PWD":/work -w /work archlinux:latest bash -lc '
+            pacman -Sy --noconfirm archiso
+            mkdir -p out
+            mkarchiso -v -w /tmp/work -o out archiso
+          '
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Starfleet-OS-ISO
+          path: out/*.iso
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Starfleet-OS-ISO v${{ github.run_number }}
+          files: out/*.iso
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

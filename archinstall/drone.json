@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "keyboard": {
+    "layout": "us"
+  },
+  "mirror-region": {
+    "region": "United States"
+  },
+  "bootloader": "grub-install",
+  "hostname": "starfleet-drone",
+  "profile": {
+    "packages": [
+      "base",
+      "linux",
+      "linux-firmware"
+    ]
+  },
+  "user": {
+    "username": "ogre",
+    "password": "ogre",
+    "sudo": true
+  },
+  "disk_selection": {
+    "type": "erase",
+    "device": "/dev/sda",
+    "filesystem": "ext4"
+  },
+  "network": {
+    "useNetworkManager": true
+  }
+}
