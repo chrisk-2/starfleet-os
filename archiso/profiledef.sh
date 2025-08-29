@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-# Allow role/version to be injected by env (defaults for local runs)
 : "${STARFLEET_ROLE:=server}"
 
-# If building from a tag like v0.3.2, prefer that; else fall back to date
+# Prefer semantic tag version (vX.Y.Z) if present; else date
 if [[ -n "${GITHUB_REF_NAME:-}" && "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   _ver="${GITHUB_REF_NAME#v}"
 else
@@ -12,7 +11,7 @@ else
 fi
 
 iso_name="starfleet-${STARFLEET_ROLE}"
-iso_label="STFL-${STARFLEET_ROLE^^}-$_ver"
+iso_label="STFL-${STARFLEET_ROLE^^}-${_ver}"
 iso_publisher="Starfleet OS"
 iso_application="Starfleet ${STARFLEET_ROLE} live ISO"
 iso_version="${_ver}"
