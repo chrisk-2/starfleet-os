@@ -1,0 +1,5 @@
+# drone / minimal agent
+busybox
+python
+openssh
+wireguard-tools
