@@ -1,19 +1,19 @@
-
 #!/usr/bin/env bash
-# Runs automatically on ISO boot to clone this repo and prompt for role (default: drone)
 set -Eeuo pipefail
-ROLE="${1:-drone}"
-REPO_URL="${REPO_URL:-https://github.com/YOUR_GH_USER/starfleet-os-deployer.git}"
-BRANCH="${BRANCH:-main}"
 
-echo "=== Starfleet ISO autostart ==="
-pacman -Sy --noconfirm git curl
-cd /root
-if [[ ! -d starfleet-os-deployer ]]; then
-  git clone --depth 1 -b "$BRANCH" "$REPO_URL"
+: "${STARFLEET_ROLE:=server}"
+
+echo "[Starfleet] Automated boot script. Role=${STARFLEET_ROLE}"
+
+# Optional: run a role marker if present
+if command -v starfleet-role.sh >/dev/null 2>&1; then
+  starfleet-role.sh || true
 fi
-cd starfleet-os-deployer
 
-read -r -p "Choose role [server/control/drone] (default: drone): " CHOICE || true
-ROLE="${CHOICE:-$ROLE}"
-exec roles/"$ROLE"/install.sh
+# Your repo already has roles/*/install.sh — call the right one if found
+if [[ -x "/root/roles/${STARFLEET_ROLE}/install.sh" ]]; then
+  echo "[Starfleet] Executing /root/roles/${STARFLEET_ROLE}/install.sh"
+  "/root/roles/${STARFLEET_ROLE}/install.sh"
+else
+  echo "[Starfleet] NOTE: /root/roles/${STARFLEET_ROLE}/install.sh not found or not executable."
+fi
