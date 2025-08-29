@@ -1,0 +1,7 @@
+# server extras
+python
+docker
+docker-compose
+podman
+podman-docker
+rsync
