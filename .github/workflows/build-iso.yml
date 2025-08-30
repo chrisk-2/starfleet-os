@@ -1,0 +1,69 @@
+name: Build Starfleet OS ISOs
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [server, control, drone]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ArchISO in container
+        uses: docker://archlinux:latest
+        with:
+          args: /bin/sh -lc "echo container-ready"
+        # Dummy step to pull image early
+
+      - name: Build ISO (role=${{ matrix.role }}) in Arch container
+        uses: addnab/docker-run-action@v3
+        with:
+          image: archlinux:latest
+          options: -v ${{ github.workspace }}:/repo
+          run: |
+            set -euo pipefail
+            pacman -Syu --noconfirm archiso rsync git
+            cd /repo
+            chmod +x scripts/*.sh || true
+            ./scripts/merge_role.sh ${{ matrix.role }}
+            WORKDIR=/tmp/build-${{ matrix.role }} ./scripts/build_iso_local.sh ${{ matrix.role }}
+            mkdir -p /repo/out/ci/${{ matrix.role }}
+            cp -v out/iso/*.iso /repo/out/ci/${{ matrix.role }}/
+
+      - name: Upload artifact (${{ matrix.role }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: starfleet-${{ matrix.role }}-isos
+          path: out/ci/${{ matrix.role }}/*.iso
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*/*.iso
+          generate_release_notes: true
