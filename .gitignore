@@ -13,7 +13,6 @@
 *.img
 
 # === Common system/editor cruft ===
-# OS
 .DS_Store
 Thumbs.db
 
