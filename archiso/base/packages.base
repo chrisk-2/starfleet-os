@@ -1,0 +1,46 @@
+# Minimal, CI-friendly ArchISO base. Role-specific adds happen elsewhere.
+# Keep this lean; mkarchiso + network + shell + firmware.
+archiso
+mkinitcpio-archiso
+linux
+linux-firmware
+
+# base shell & tools
+bash
+coreutils
+procps-ng
+iproute2
+iputils
+nano
+vim
+less
+sed
+grep
+tar
+gzip
+xz
+bzip2
+pciutils
+usbutils
+lsscsi
+hdparm
+parted
+gptfdisk
+dosfstools
+e2fsprogs
+btrfs-progs
+ntfs-3g
+exfatprogs
+
+# networking
+networkmanager
+iwd
+wpa_supplicant
+dhclient
+openssl
+curl
+wget
+openssh
+
+# boot on EFI machines (live environment)
+efibootmgr
