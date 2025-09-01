@@ -1,0 +1,12 @@
+
+# ArchISO build outputs
+/out*
+/work*
+*.iso
+
+
+# ArchISO build outputs
+/out*
+/work*
+*.iso
+

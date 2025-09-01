@@ -1,0 +1,75 @@
+name: Build ISOs
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.role }} ISO
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [control, drone, server]
+
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Prepare pacman
+        run: |
+          sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf || true
+          pacman -Sy --noconfirm --needed git archiso sudo
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          uname -a
+          bash --version
+          pacman -Q archiso
+
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/*.sh system/firstboot/*.sh || true
+          chmod +x STARFLEET_INSTALL_*.run || true
+
+      - name: Build ISO for role
+        env:
+          ROLE: ${{ matrix.role }}
+        run: |
+          set -euo pipefail
+          echo "Building role: ${ROLE}"
+          # Expect your script to respect ROLE (or pass as arg)
+          if [[ -x scripts/build_iso_local.sh ]]; then
+            ./scripts/build_iso_local.sh "${ROLE}"
+          else
+            echo "ERROR: scripts/build_iso_local.sh missing or not executable"
+            exit 2
+          fi
+
+      - name: Find ISOs
+        id: findiso
+        run: |
+          set -euo pipefail
+          # Look for ISO outputs in common locations
+          ISO=$(ls -1 **/*.iso 2>/dev/null | head -n1 || true)
+          echo "iso=${ISO}" >> "$GITHUB_OUTPUT"
+          if [[ -z "${ISO}" ]]; then
+            echo "No ISO found; listing tree:"
+            find . -maxdepth 3 -type f -name '*.iso' -print || true
+          fi
+
+      - name: Upload ISO artifact
+        if: steps.findiso.outputs.iso != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: "starfleet-${{ matrix.role }}-${{ github.ref_name }}"
+          path: ${{ steps.findiso.outputs.iso }}
+          compression-level: 0
