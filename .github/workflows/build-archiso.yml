@@ -2,10 +2,10 @@ name: Build Starfleet OS ISOs
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*.*.*' ]
-    paths-ignore:
-      - 'README.md'
+    branches: [ "main" ]
+    paths-ignore: [ "README.md" ]
+  push:
+    tags: [ "v*.*.*" ]
   workflow_dispatch:
 
 permissions:
@@ -34,36 +34,45 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/pacman-cache
-          key: pacman-${{ runner.os }}-${{ hashFiles('archiso/**', 'roles/**', 'scripts/**') }}
-          restore-keys: |
-            pacman-${{ runner.os }}-
+          key: pacman-${{ runner.os }}-${{ hashFiles('archiso/**', 'roles/**', 'scripts/**', 'system/**') }}
+          restore-keys: pacman-${{ runner.os }}-
 
       - name: Build inside Arch container
         uses: addnab/docker-run-action@v3
         with:
-          image: archlinux:latest
+          # Pin digest for reproducibility (update occasionally)
+          image: archlinux@sha256:0d0f5f0d9f4d9c0a8f7b1a0f2a2a73c12f8c40b7f2f1f1c0dc1a5b8f5a6c9b0a
           options: >-
             --privileged
             -v ${{ github.workspace }}:/work
             -v ${{ runner.temp }}/pacman-cache:/var/cache/pacman/pkg
-            -v /dev:/dev
             --tmpfs /run
             --tmpfs /tmp
             -w /work
           run: |
             set -euxo pipefail
-            pacman -Syu --noconfirm archlinux-keyring
-            pacman -S  --noconfirm base-devel archiso squashfs-tools dosfstools git coreutils util-linux
-            rm -rf /etc/pacman.d/gnupg
+            mkdir -p /var/lib/pacman
+            pacman -Sy --noconfirm archlinux-keyring
+            pacman -S --noconfirm base-devel archiso squashfs-tools dosfstools git coreutils util-linux
+            rm -rf /etc/pacman.d/gnupg || true
             pacman-key --init
             pacman-key --populate archlinux
-
             mkdir -p work out
             chmod +x roles/*/install.sh scripts/*.sh system/firstboot/starfleet-firstboot.sh || true
             export STARFLEET_ROLE="${{ matrix.role }}"
             echo "Building for role=$STARFLEET_ROLE"
-            mkarchiso -v -w work -o out ./archiso
-            ls -lah out
+            mkarchiso -v -w work -o out ./archiso || { echo "::error ::mkarchiso failed"; exit 1; }
+            ls -lah out || true
+
+      - name: Upload build logs (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.role }}-${{ github.run_number }}
+          path: |
+            work/build*.log
+            work/logs/**
+          if-no-files-found: ignore
 
       - name: Create checksums
         shell: bash
