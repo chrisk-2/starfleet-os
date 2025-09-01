@@ -1,85 +1,59 @@
 #!/usr/bin/env bash
+# Compose a temp archiso profile by merging base + role overlays.
+# Usage: scripts/merge_role.sh <ROLE> <TMP_PROFILE_DIR>
 set -euo pipefail
 
 ROLE="${1:-}"
-[[ -n "$ROLE" ]] || { echo "usage: $0 <server|control|drone>"; exit 1; }
+OUT_DIR="${2:-}"
 
-root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-cd "$root"
-
-BASE="archiso/base"              # put base profile templates here
-ROLE_DIR="roles/$ROLE"
-OUT="archiso/profiles/starfleet" # canonical composed profile
-
-[[ -d "$ROLE_DIR" ]] || { echo "role not found: $ROLE_DIR"; exit 2; }
-mkdir -p "$OUT"
-
-echo "== Compose Starfleet profile from base + role: $ROLE =="
-
-# 1) start clean
-rm -rf "$OUT"
-mkdir -p "$OUT/airootfs"
-
-# 2) copy base profile skeleton (profiledef.sh, packages.x86_64, etc.)
-if [[ -d "$BASE" ]]; then
-  cp -a "$BASE/"* "$OUT/"
-else
-  echo "WARN: base profile missing ($BASE). Creating minimal skeleton."
-  cat > "$OUT/profiledef.sh" <<'EOF'
-#!/usr/bin/env bash
-iso_name="starfleet"
-iso_label="STARFLEET_$(date +%Y%m)"
-iso_publisher="Starfleet Command"
-iso_application="Starfleet OS"
-install_dir="arch"
-buildmodes=('iso')
-bootmodes=('uefi-x64.systemd-boot' 'bios.syslinux.mbr' 'bios.syslinux.eltorito')
-arch="x86_64"
-pacman_conf="pacman.conf"
-airootfs_image_type="squashfs"
-airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')
-file_permissions=(
-  ["/usr/local/bin/starfleet-firstboot.sh"]="0:0:755"
-)
-EOF
-  printf "base-devel\nlinux\nlinux-firmware\nmkinitcpio-archiso\narch-install-scripts\n" > "$OUT/packages.x86_64"
+if [[ -z "$ROLE" || -z "$OUT_DIR" ]]; then
+  echo "Usage: $0 <ROLE: server|control|drone> <TMP_PROFILE_DIR>"
+  exit 64
 fi
 
-# 3) merge package list
-if [[ -f "$ROLE_DIR/packages.txt" ]]; then
-  awk 'NF && $1 !~ /^#/' "$ROLE_DIR/packages.txt" >> "$OUT/packages.x86_64"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BASE_PROFILE="$REPO_DIR/archiso"
+ROLE_DIR="$REPO_DIR/roles/$ROLE"
+
+# Sanity checks
+[[ -d "$BASE_PROFILE" ]] || { echo "Missing base archiso profile at $BASE_PROFILE"; exit 66; }
+[[ -d "$ROLE_DIR" ]] || { echo "Unknown role '$ROLE' (no $ROLE_DIR)"; exit 67; }
+
+# Clean out dir
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR"
+
+echo "[*] Copying base profile -> $OUT_DIR"
+rsync -a --delete "$BASE_PROFILE/" "$OUT_DIR/"
+
+# Merge packages, if present
+if [[ -f "$ROLE_DIR/packages.x86_64" ]]; then
+  echo "[*] Merging packages.x86_64"
+  # De-duplicate while preserving base order: append role packages then sort unique
+  awk 'FNR==1{f++} {print $0, f}' "$OUT_DIR/packages.x86_64" <(cat "$ROLE_DIR/packages.x86_64") \
+  | awk '{print $1}' | awk 'NF' | sed 's/[[:space:]]\+$//' | awk '!seen[$0]++' > "$OUT_DIR/packages.x86_64.tmp"
+  mv "$OUT_DIR/packages.x86_64.tmp" "$OUT_DIR/packages.x86_64"
 fi
-# de-dup
-sort -u -o "$OUT/packages.x86_64" "$OUT/packages.x86_64"
 
-# 4) overlay (airootfs)
-if [[ -d "$ROLE_DIR/overlay" ]]; then
-  rsync -a "$ROLE_DIR/overlay/" "$OUT/airootfs/"
+# Merge pacman.conf fragments (optional)
+if [[ -f "$ROLE_DIR/pacman.conf.append" ]]; then
+  echo "[*] Appending pacman.conf role fragment"
+  cat "$ROLE_DIR/pacman.conf.append" >> "$OUT_DIR/pacman.conf"
 fi
 
-# 5) system files (firstboot units, etc.)
-if [[ -d "system/firstboot" ]]; then
-  mkdir -p "$OUT/airootfs/usr/local/bin" "$OUT/airootfs/etc/systemd/system"
-  cp -a system/firstboot/starfleet-firstboot.sh "$OUT/airootfs/usr/local/bin/" 2>/dev/null || true
-  cp -a system/firstboot/starfleet-firstboot.service "$OUT/airootfs/etc/systemd/system/" 2>/dev/null || true
+# Merge airootfs overlay, if present
+if [[ -d "$ROLE_DIR/airootfs" ]]; then
+  echo "[*] Overlaying airootfs for role '$ROLE'"
+  rsync -a "$ROLE_DIR/airootfs/" "$OUT_DIR/airootfs/"
 fi
 
-# 6) pacman.conf fallback
-[[ -f "$OUT/pacman.conf" ]] || cat > "$OUT/pacman.conf" <<'EOF'
-[options]
-HoldPkg     = pacman glibc
-Architecture = auto
-SigLevel    = Required DatabaseOptional
-LocalFileSigLevel = Optional
-UseSyslog
-Color
-ParallelDownloads = 5
-[core]
-Include = /etc/pacman.d/mirrorlist
-[extra]
-Include = /etc/pacman.d/mirrorlist
-[community]
-Include = /etc/pacman.d/mirrorlist
-EOF
+# Optional: profiledef.sh overrides
+if [[ -f "$ROLE_DIR/profiledef.override.sh" ]]; then
+  echo "[*] Applying profiledef override"
+  cp "$ROLE_DIR/profiledef.override.sh" "$OUT_DIR/profiledef.sh"
+fi
 
-echo "== Composed profile at: $OUT =="
+# Stamp role for post-install scripts
+echo "$ROLE" > "$OUT_DIR/airootfs/etc/starfleet-role"
+
+echo "[✓] Role '$ROLE' merged into: $OUT_DIR"
