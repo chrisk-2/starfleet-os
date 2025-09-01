@@ -1,12 +1,33 @@
+# === Starfleet OS build artifacts ===
+/out/
+/work/
+/tmp/
+/logs/
+/release/
+/release_*.tar.zst
 
-# ArchISO build outputs
-/out*
-/work*
+# ISOs and checksums
 *.iso
+*.iso.sha256
+*.iso.md5
+*.img
 
+# === Common system/editor cruft ===
+# OS
+.DS_Store
+Thumbs.db
 
-# ArchISO build outputs
-/out*
-/work*
-*.iso
+# Editors/IDEs
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
 
+# Python virtualenvs / caches
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env/
