@@ -30,3 +30,14 @@ __pycache__/
 *.pyo
 .venv/
 .env/
+# Starfleet OS build outputs
+/out/
+/work/
+/tmp/
+/logs/
+*.iso
+*.log
+*.sig
+*.zst
+archiso/*/work/
+archiso/*/out/
