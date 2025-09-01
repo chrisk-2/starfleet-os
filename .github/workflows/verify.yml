@@ -1,0 +1,15 @@
+name: Verify Repo
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+permissions: { contents: read }
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repo verifier
+        run: |
+          chmod +x scripts/verify_repo.sh || true
+          bash scripts/verify_repo.sh
